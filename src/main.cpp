@@ -13,8 +13,8 @@
 
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
-const char *ssid = "";
-const char *password = "";
+const char *ssid = "iPhone de japa";
+const char *password = "japoneskn";
 WebServer server(80);
 
 float temperaturaC = 0.0;
@@ -28,45 +28,145 @@ void paginainicial()
 {
   String html = R"rawliteral(
     <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Monitoramento do Solo</title>
-    </head>
-    <body>
-
-        <h1>Monitoramento do Solo</h1>
-
-        <p id = "temperatura"></p>°C
-        <p id = "umidade"></p>%
-
-        <script>
-        
-        function atualizarDados(){
-        fetch('dados')
-
-          .then(response => response.json())
-
-          .then(data => {
-            
-            document.getElementById('temperatura').textContent = data.temperatura.toFixed(2);
-            
-            document.getElementById('umidade').textContent = data.umidade;
-          })
-            .catch(error => {
-            console.error('Erro ao buscar dados:', error);
-          });
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoramento do Solo</title>
+    <style>
+        :root {
+            --primary-color: #2e7d32;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --box-bg: #e8f5e9;
+            --text-main: #1b5e20;
+            --text-muted: #4caf50;
         }
 
-        atualizarDados();
-        
-        setInterval(atualizarDados, 1);
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
-        </script>
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
 
-    </body>
-    </html>
+        .container {
+            background-color: var(--card-bg);
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 10px 30px rgba(46, 125, 50, 0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 450px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 30px;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .dashboard {
+            display: flex;
+            gap: 20px;
+            justify-content: space-between;
+        }
+
+        .card {
+            background-color: var(--box-bg);
+            padding: 25px 20px;
+            border-radius: 12px;
+            flex: 1;
+            border: 1px solid #c8e6c9;
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-value {
+            font-size: 36px;
+            font-weight: bold;
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .unit {
+            font-size: 18px;
+            font-weight: normal;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>🌱 Monitoramento do Solo</h1>
+
+        <div class="dashboard">
+            <div class="card">
+                <div class="card-title">🌡️ Temperatura</div>
+                <div class="card-value">
+                    <span id="temperatura">--</span>
+                    <span class="unit">°C</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">💧 Umidade</div>
+                <div class="card-value">
+                    <span id="umidade">--</span>
+                    <span class="unit">%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function atualizarDados(){
+    fetch('dados')
+      .then(response => response.json())
+      .then(data => {
+        document.getElementById('temperatura').textContent = data.temperatura.toFixed(2);
+        document.getElementById('umidade').textContent = data.umidade;
+      })
+      .catch(error => {
+        console.error('Erro ao buscar dados:', error);
+      });
+    }
+
+    atualizarDados();
+    
+    setInterval(atualizarDados, 1);
+    </script>
+
+</body>
+</html>
     )rawliteral";
 
   server.send(200, "text/html", html);
@@ -164,6 +264,7 @@ void loop()
   Serial.print(" %  (leitura bruta: ");
   Serial.print(leituraBruta);
   Serial.println(")");
+  Serial.print(WiFi.localIP());
 
   delay(2000);
 }
