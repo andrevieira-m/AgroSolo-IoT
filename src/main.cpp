@@ -4,6 +4,8 @@
 #include <ArduinoJson.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
@@ -12,7 +14,7 @@
 /**
  * =============================================================================
  * PROJETO BETTIU 2P - AGROSOLO
- * Firmware com Dashboard Completo Hospedado no Próprio ESP32
+ * Monitoramento de Solo + Servidor Web + Alertas Automáticos via TELEGRAM
  * =============================================================================
  */
 
@@ -20,20 +22,36 @@
 const char *WIFI_SSID = "SEU_WIFI_SSID";
 const char *WIFI_PASSWORD = "SUA_SENHA_WIFI";
 
+// --- CONFIGURAÇÃO DO BOT DO TELEGRAM ---
+// Obtenha com o @BotFather e o seu ID com o @userinfobot
+const char *TELEGRAM_BOT_TOKEN = "SEU_BOT_TOKEN_AQUI"; // Ex: "7123456789:AAFlq..."
+const char *TELEGRAM_CHAT_ID = "SEU_CHAT_ID_AQUI";                                       // Ex: "123456789"
+
+// --- LIMITES DE ALERTA DO SOLO ---
+const float LIMITE_UMIDADE_MINIMA = 30.0; // Abaixo disso = Solo Seco (precisa irrigar)
+const float LIMITE_UMIDADE_MAXIMA = 80.0; // Acima disso = Solo Encharcado
+const float LIMITE_TEMP_MAXIMA = 32.0;    // Acima disso = Risco térmico
+const float LIMITE_TEMP_MINIMA = 15.0;    // Abaixo disso = Frio intenso / geada
+
+// Cooldown de alertas: tempo mínimo entre notificações repetidas (10 minutos em ms)
+const unsigned long COOLDOWN_ALERTA_MS = 10UL * 60UL * 1000UL;
+unsigned long ultimoAlertaEnviado = 0;
+bool alertaAtivo = false;
+
 // --- MAPEAMENTO DE PINOS (GPIOs) ---
-#define PIN_DS18B20 4        // 1-Wire DS18B20 (com resistor pull-up de 4.7k para 3V3)
+#define PIN_DS18B20 4        // 1-Wire DS18B20
 #define PIN_SOIL_MOISTURE 34 // Analógico do sensor de umidade (ADC1 canal 6)
 
 // --- CALIBRAÇÃO DO SENSOR DE UMIDADE ---
 const int VALOR_SECO = 3500;    // Leitura com sensor no ar (0% umidade)
 const int VALOR_MOLHADO = 1400; // Leitura com sensor na água (100% umidade)
 
-// --- OBJETOS DE HARDWARE & SERVIDOR ---
+// --- OBJETOS ---
 OneWire oneWire(PIN_DS18B20);
 DallasTemperature dallasSensors(&oneWire);
 WebServer server(80);
 
-// --- VARIÁVEIS GLOBAIS DE LEITURA ---
+// --- VARIÁVEIS GLOBAIS ---
 float temperaturaAtual = 0.0;
 float umidadeAtual = 0.0;
 int adcAtual = 0;
@@ -43,6 +61,120 @@ String urlServidorWeb = "";
 
 unsigned long ultimoTempoLeitura = 0;
 const unsigned long intervaloLeituraMs = 2000;
+
+// --- FUNÇÃO PARA ENVIAR MENSAGEM VIA TELEGRAM (HTTPS POST) ---
+void enviarMensagemTelegram(String mensagem)
+{
+    // Se as credenciais não foram preenchidas, ignora
+    if (String(TELEGRAM_BOT_TOKEN).indexOf("SEU_BOT_TOKEN") != -1)
+        return;
+    if (WiFi.status() != WL_CONNECTED)
+        return;
+
+    WiFiClientSecure client;
+    client.setInsecure(); // Pula validação de CA para ser rápido e economizar RAM
+
+    HTTPClient https;
+    String endpoint = "https://api.telegram.org/bot" + String(TELEGRAM_BOT_TOKEN) + "/sendMessage";
+
+    if (https.begin(client, endpoint))
+    {
+        https.addHeader("Content-Type", "application/json");
+
+        // Monta o JSON com suporte nativo a Emojis e formatação Markdown
+        JsonDocument doc;
+        doc["chat_id"] = TELEGRAM_CHAT_ID;
+        doc["text"] = mensagem;
+        doc["parse_mode"] = "Markdown";
+
+        String jsonPayload;
+        serializeJson(doc, jsonPayload);
+
+        int httpResponseCode = https.POST(jsonPayload);
+        if (httpResponseCode > 0)
+        {
+            Serial.printf("[Telegram] Mensagem enviada com sucesso! (HTTP %d)\n", httpResponseCode);
+        }
+        else
+        {
+            Serial.printf("[Telegram] Falha no envio: %s\n", https.errorToString(httpResponseCode).c_str());
+        }
+        https.end();
+    }
+}
+
+// --- VERIFICAÇÃO AUTOMÁTICA DE CONDIÇÕES DE ALERTA ---
+void verificarAlertasTelegram()
+{
+    unsigned long agora = millis();
+    String motivoAlerta = "";
+    bool condicaoCritica = false;
+
+    // 1. Verifica limites de umidade
+    if (umidadeAtual < LIMITE_UMIDADE_MINIMA)
+    {
+        condicaoCritica = true;
+        motivoAlerta += "💧 *UMIDADE CRÍTICA (SECO):* " + String(umidadeAtual, 1) + "%\n" +
+                        "⚠️ *Ação:* Irrigação imediata necessária.\n";
+    }
+    else if (umidadeAtual > LIMITE_UMIDADE_MAXIMA)
+    {
+        condicaoCritica = true;
+        motivoAlerta += "🌊 *UMIDADE EXCESSIVA (ENCHARCADO):* " + String(umidadeAtual, 1) + "%\n" +
+                        "⚠️ *Ação:* Suspenda a irrigação.\n";
+    }
+
+    // 2. Verifica limites de temperatura
+    if (temperaturaAtual > -100)
+    { // Ignora se o sensor estiver desconectado
+        if (temperaturaAtual > LIMITE_TEMP_MAXIMA)
+        {
+            condicaoCritica = true;
+            motivoAlerta += "🔥 *TEMPERATURA ALTA DO SOLO:* " + String(temperaturaAtual, 1) + " °C\n";
+        }
+        else if (temperaturaAtual < LIMITE_TEMP_MINIMA)
+        {
+            condicaoCritica = true;
+            motivoAlerta += "❄️ *TEMPERATURA BAIXA DO SOLO:* " + String(temperaturaAtual, 1) + " °C\n";
+        }
+    }
+
+    // 3. Disparo do alerta respeitando o tempo de espera (cooldown)
+    if (condicaoCritica)
+    {
+        if (!alertaAtivo || (agora - ultimoAlertaEnviado >= COOLDOWN_ALERTA_MS))
+        {
+            alertaAtivo = true;
+            ultimoAlertaEnviado = agora;
+
+            String msg = "🚨 *[AGROSOLO - ALERTA DISPARADO]*\n\n";
+            msg += motivoAlerta;
+            msg += "\n📊 *Dados Atuais:*\n";
+            msg += "• Temp: " + String(temperaturaAtual, 1) + " °C\n";
+            msg += "• Umidade: " + String(umidadeAtual, 1) + " %\n";
+            msg += "• Status: " + statusSoloAtual + "\n";
+            msg += "• Acessar: " + urlServidorWeb;
+
+            Serial.println("[Telegram] Disparando alerta de limites fora do padrao!");
+            enviarMensagemTelegram(msg);
+        }
+    }
+    else
+    {
+        // Se estava em alerta e os níveis voltaram ao normal
+        if (alertaAtivo)
+        {
+            alertaAtivo = false;
+            String msgNormalizado = "✅ *[AGROSOLO - CONDIÇÕES NORMALIZADAS]*\n\n";
+            msgNormalizado += "Os níveis de umidade e temperatura do solo voltaram para a faixa ideal!\n";
+            msgNormalizado += "• Temp: " + String(temperaturaAtual, 1) + " °C\n";
+            msgNormalizado += "• Umidade: " + String(umidadeAtual, 1) + " %\n";
+            msgNormalizado += "• Painel: " + urlServidorWeb;
+
+            enviarMensagemTelegram(msgNormalizado);
+        }
+    }
+}
 
 // --- LEITURAS DE SENSORES ---
 int lerUmidadeSoloMedia(int pino, int amostras = 10)
@@ -75,7 +207,7 @@ void atualizarLeituraSensores()
     umidadeAtual = calcularPorcentagemUmidade(adcAtual);
     tensaoAtual = (adcAtual / 4095.0) * 3.3;
 
-    if (umidadeAtual < 30.0)
+    if (umidadeAtual < LIMITE_UMIDADE_MINIMA)
     {
         statusSoloAtual = "SECO";
     }
@@ -90,11 +222,12 @@ void atualizarLeituraSensores()
 
     Serial.printf("[AGROSOLO] Temp: %.2f °C | Umid: %.1f %% | ADC: %d (%.2fV) | Status: %s\n",
                   temperaturaAtual, umidadeAtual, adcAtual, tensaoAtual, statusSoloAtual.c_str());
+
+    // Verifica se precisa notificar via Telegram
+    verificarAlertasTelegram();
 }
 
 // --- ROTAS DO SERVIDOR WEB ---
-
-// Rota OPTIONS para CORS
 void handleOptions()
 {
     server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -103,7 +236,6 @@ void handleOptions()
     server.send(204);
 }
 
-// Endpoint REST JSON: /api/data
 void handleApiData()
 {
     JsonDocument doc;
@@ -123,7 +255,6 @@ void handleApiData()
     server.send(200, "application/json", jsonResponse);
 }
 
-// ROTA RAIZ "/": Serve o DASHBOARD COMPLETO direto da memória Flash do ESP32!
 void handleRoot()
 {
     server.send_P(200, "text/html", DASHBOARD_HTML);
@@ -137,7 +268,7 @@ void setup()
     delay(1000);
 
     Serial.println("\n================================================");
-    Serial.println("  AGROSOLO 2P - SERVIDOR WEB COM DASHBOARD      ");
+    Serial.println("  AGROSOLO 2P - MONITORAMENTO & ALERTAS TELEGRAM ");
     Serial.println("================================================");
 
     pinMode(PIN_SOIL_MOISTURE, INPUT);
@@ -160,25 +291,23 @@ void setup()
     if (WiFi.status() == WL_CONNECTED)
     {
         urlServidorWeb = "http://" + WiFi.localIP().toString();
-        Serial.println("\n[SUCESSO] Wi-Fi conectado com sucesso!");
-        Serial.print(">>> ACESSE O DASHBOARD EM: ");
+        Serial.println("\n[SUCESSO] Wi-Fi conectado!");
+        Serial.print(">>> Dashboard Web em: ");
         Serial.println(urlServidorWeb);
-        Serial.print(">>> ENDPOINT JSON EM:     ");
-        Serial.println(urlServidorWeb + "/api/data");
+
+        // Mensagem de inicialização no Telegram (opcional)
+        enviarMensagemTelegram("🌱 *[AGROSOLO INICIADO]*\nESP32 conectado na rede com sucesso!\nPainel: " + urlServidorWeb);
     }
     else
     {
-        Serial.println("\n[AVISO] Nao conectou ao Wi-Fi. Verifique SSID e Senha.");
+        Serial.println("\n[AVISO] Nao conectou ao Wi-Fi.");
     }
 
-    // Configuração das rotas
     server.on("/", HTTP_GET, handleRoot);
     server.on("/api/data", HTTP_GET, handleApiData);
     server.on("/api/data", HTTP_OPTIONS, handleOptions);
     server.begin();
-
-    Serial.println("Servidor HTTP ativo na porta 80.");
-    Serial.println("Ao escanear o QR Code, qualquer celular abrira o Dashboard completo!\n");
+    Serial.println("Servidor HTTP ativo na porta 80.\n");
 }
 
 void loop()
