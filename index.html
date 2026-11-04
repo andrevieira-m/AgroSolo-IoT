@@ -415,10 +415,24 @@
                 <input type="text" id="esp-ip" class="ip-input" placeholder="Ex: http://192.168.1.150 ou deixe vazio se hospedado no ESP">
                 <button class="btn" id="btn-save-ip">Conectar</button>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                <button class="btn btn-outline" id="btn-show-qr">📱 QR Code para Celular</button>
                 <button class="btn btn-outline" id="btn-toggle-sim">Modo Simulação</button>
             </div>
         </section>
+
+        <!-- Modal QR Code -->
+        <div id="qr-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center;">
+            <div style="background: white; border-radius: 16px; padding: 28px; text-align: center; max-width: 340px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3);">
+                <h3 style="margin-bottom: 8px; color: #1b4332;">Acesso Rápido no Celular</h3>
+                <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 16px;">Aponte a câmera do seu smartphone para abrir o painel AgroSolo direto no celular:</p>
+                <div id="qr-image-container" style="margin: 0 auto 16px; width: 180px; height: 180px; display: flex; align-items: center; justify-content: center; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0;">
+                    <img id="qr-img" src="" alt="QR Code" style="width: 170px; height: 170px; border-radius: 8px;">
+                </div>
+                <p id="qr-url-text" style="font-size: 0.8rem; font-family: monospace; color: #2d6a4f; margin-bottom: 16px; word-break: break-all; font-weight: bold;"></p>
+                <button class="btn" id="btn-close-qr" style="width: 100%;">Fechar</button>
+            </div>
+        </div>
 
         <!-- Grade de Indicadores Principais -->
         <main class="cards-grid">
@@ -542,6 +556,31 @@
             atualizarBotaoSimulacao();
             elStatusText.textContent = "Reconectando...";
             fetchDados();
+        });
+
+        // Modal de QR Code para Smartphone
+        const elBtnShowQr = document.getElementById('btn-show-qr');
+        const elBtnCloseQr = document.getElementById('btn-close-qr');
+        const elQrModal = document.getElementById('qr-modal');
+        const elQrImg = document.getElementById('qr-img');
+        const elQrUrlText = document.getElementById('qr-url-text');
+
+        elBtnShowQr.addEventListener('click', () => {
+            let targetUrl = elInputIp.value.trim() || 'http://192.168.0.12';
+            if (!targetUrl.startsWith('http')) targetUrl = 'http://' + targetUrl;
+            
+            // Gera QR Code instantâneo via QuickChart / QR Server API
+            elQrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(targetUrl)}`;
+            elQrUrlText.textContent = targetUrl;
+            elQrModal.style.display = 'flex';
+        });
+
+        elBtnCloseQr.addEventListener('click', () => {
+            elQrModal.style.display = 'none';
+        });
+
+        elQrModal.addEventListener('click', (e) => {
+            if (e.target === elQrModal) elQrModal.style.display = 'none';
         });
 
         // Alternar modo de simulação (útil para testes sem placa conectada)
