@@ -7,6 +7,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgroSolo - Painel de Monitoramento</title>
+    <!-- Chart.js para renderização de curvas suaves no navegador (0% de carga no ESP32) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #2d6a4f;
@@ -277,6 +279,47 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             margin-top: 10px;
         }
 
+        /* Chart Card */
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 22px;
+            box-shadow: var(--shadow);
+            margin-bottom: 20px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chart-header h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-badge {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: #f1f5f9;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 270px;
+            width: 100%;
+        }
+
         /* History Table */
         .history-card {
             background: var(--card-bg);
@@ -410,7 +453,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         <!-- Ações Rápidas -->
         <section class="action-bar">
-            <span class="last-update-text">Atualizado a cada 2 segundos</span>
+            <span class="last-update-text">Atualizado em tempo real (2s)</span>
             <button class="btn" id="btn-open-qr">
                 <span>📱</span> Compartilhar / QR Code
             </button>
@@ -467,6 +510,17 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             </article>
         </main>
 
+        <!-- GRÁFICO DE CURVA TEMPORAL (Temperatura & Umidade) -->
+        <section class="chart-card">
+            <div class="chart-header">
+                <h2>📈 Curvas de Tendência em Tempo Real</h2>
+                <span class="chart-badge">Últimos 25 registros</span>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="soilChart"></canvas>
+            </div>
+        </section>
+
         <!-- Histórico das últimas leituras -->
         <section class="history-card">
             <h2>
@@ -513,7 +567,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         </div>
     </div>
 
-    <!-- JavaScript Assíncrono com Fetch e JSON -->
+    <!-- JavaScript Assíncrono com Chart.js -->
     <script>
         const elTemp = document.getElementById('val-temperatura');
         const elBadgeTemp = document.getElementById('badge-temperatura');
@@ -536,6 +590,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         let historico = [];
         const MAX_HISTORICO = 7;
+        const MAX_PONTOS_GRAFICO = 25;
 
         // Modal QR Code
         elBtnOpenQr.addEventListener('click', () => {
@@ -552,6 +607,108 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         elQrModal.addEventListener('click', (e) => {
             if (e.target === elQrModal) elQrModal.style.display = 'none';
         });
+
+        // --- INICIALIZAÇÃO DO GRÁFICO CHART.JS (Renderizado 100% no cliente) ---
+        let soilChart = null;
+        const ctx = document.getElementById('soilChart').getContext('2d');
+
+        if (typeof Chart !== 'undefined') {
+            soilChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Umidade do Solo (%)',
+                            data: [],
+                            borderColor: '#0284c7',
+                            backgroundColor: 'rgba(2, 132, 199, 0.12)',
+                            yAxisID: 'yUmidade',
+                            tension: 0.35, // Curva suave
+                            fill: true,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            borderWidth: 2.5
+                        },
+                        {
+                            label: 'Temperatura (°C)',
+                            data: [],
+                            borderColor: '#f97316',
+                            backgroundColor: 'rgba(249, 115, 22, 0.08)',
+                            yAxisID: 'yTemp',
+                            tension: 0.35, // Curva suave
+                            fill: false,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            borderWidth: 2.5
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12,
+                                font: { size: 12, weight: 'bold' }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            padding: 10,
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10 }, maxRotation: 0 }
+                        },
+                        yUmidade: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            min: 0,
+                            max: 100,
+                            title: { display: true, text: 'Umidade (%)', color: '#0284c7', font: { weight: 'bold' } },
+                            grid: { color: 'rgba(226, 232, 240, 0.6)' }
+                        },
+                        yTemp: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 50,
+                            title: { display: true, text: 'Temp (°C)', color: '#f97316', font: { weight: 'bold' } },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function atualizarGrafico(hora, umidade, temp) {
+            if (!soilChart) return;
+
+            soilChart.data.labels.push(hora);
+            soilChart.data.datasets[0].data.push(umidade);
+            soilChart.data.datasets[1].data.push(temp > -100 ? temp : null);
+
+            // Mantém no máximo 25 pontos na tela para um efeito dinâmico suave
+            if (soilChart.data.labels.length > MAX_PONTOS_GRAFICO) {
+                soilChart.data.labels.shift();
+                soilChart.data.datasets[0].data.shift();
+                soilChart.data.datasets[1].data.shift();
+            }
+
+            soilChart.update('none'); // Atualização ultra-rápida sem animações pesadas
+        }
 
         function renderizar(dados) {
             const agora = new Date().toLocaleTimeString('pt-BR');
@@ -596,7 +753,10 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             elTensao.textContent = (dados.tensao !== undefined) ? dados.tensao.toFixed(2) : ((dados.adc / 4095) * 3.3).toFixed(2);
             elTimestamp.textContent = agora;
 
-            // 4. Histórico
+            // 4. Atualiza o gráfico de curvas dinâmicas
+            atualizarGrafico(agora, hum, dados.temperatura);
+
+            // 5. Histórico
             adicionarHistorico({
                 hora: agora,
                 temp: dados.temperatura <= -100 ? "N/D" : `${dados.temperatura.toFixed(1)} °C`,
@@ -632,7 +792,6 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
         async function fetchDados() {
             try {
-                // Busca o endpoint JSON relativo no próprio ESP32
                 const res = await fetch('/api/data');
                 if (!res.ok) throw new Error("HTTP " + res.status);
                 const dados = await res.json();
@@ -647,7 +806,6 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
             }
         }
 
-        // Inicia busca
         fetchDados();
         setInterval(fetchDados, 2000);
     </script>

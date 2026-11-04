@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AgroSolo - Painel de Monitoramento</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
             --primary: #2d6a4f;
@@ -312,6 +313,44 @@
             margin-top: 8px;
         }
 
+        /* Chart Card */
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chart-header h2 {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .chart-badge {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: #f1f5f9;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+
+        .chart-wrapper {
+            position: relative;
+            height: 270px;
+            width: 100%;
+        }
+
         /* History Table Section */
         .history-card {
             background: var(--card-bg);
@@ -485,6 +524,17 @@
             </article>
         </main>
 
+        <!-- GRÁFICO DE CURVA TEMPORAL (Temperatura & Umidade) -->
+        <section class="chart-card">
+            <div class="chart-header">
+                <h2>📈 Curvas de Tendência em Tempo Real</h2>
+                <span class="chart-badge">Últimos 25 registros</span>
+            </div>
+            <div class="chart-wrapper">
+                <canvas id="soilChart"></canvas>
+            </div>
+        </section>
+
         <!-- Tabela com Histórico Dinâmico das Leituras -->
         <section class="history-card">
             <h2>
@@ -541,6 +591,106 @@
         let modoSimulacao = false;
         let historico = [];
         const MAX_HISTORICO = 8;
+        const MAX_PONTOS_GRAFICO = 25;
+
+        // --- INICIALIZAÇÃO DO GRÁFICO (Chart.js no Navegador) ---
+        let soilChart = null;
+        const ctx = document.getElementById('soilChart').getContext('2d');
+
+        if (typeof Chart !== 'undefined') {
+            soilChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Umidade do Solo (%)',
+                            data: [],
+                            borderColor: '#0284c7',
+                            backgroundColor: 'rgba(2, 132, 199, 0.12)',
+                            yAxisID: 'yUmidade',
+                            tension: 0.35,
+                            fill: true,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            borderWidth: 2.5
+                        },
+                        {
+                            label: 'Temperatura (°C)',
+                            data: [],
+                            borderColor: '#f97316',
+                            backgroundColor: 'rgba(249, 115, 22, 0.08)',
+                            yAxisID: 'yTemp',
+                            tension: 0.35,
+                            fill: false,
+                            pointRadius: 3,
+                            pointHoverRadius: 6,
+                            borderWidth: 2.5
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 12,
+                                font: { size: 12, weight: 'bold' }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                            padding: 10,
+                            cornerRadius: 8
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { font: { size: 10 }, maxRotation: 0 }
+                        },
+                        yUmidade: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            min: 0,
+                            max: 100,
+                            title: { display: true, text: 'Umidade (%)', color: '#0284c7', font: { weight: 'bold' } },
+                            grid: { color: 'rgba(226, 232, 240, 0.6)' }
+                        },
+                        yTemp: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            min: 0,
+                            max: 50,
+                            title: { display: true, text: 'Temp (°C)', color: '#f97316', font: { weight: 'bold' } },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function atualizarGrafico(hora, umidade, temp) {
+            if (!soilChart) return;
+            soilChart.data.labels.push(hora);
+            soilChart.data.datasets[0].data.push(umidade);
+            soilChart.data.datasets[1].data.push(temp > -100 ? temp : null);
+
+            if (soilChart.data.labels.length > MAX_PONTOS_GRAFICO) {
+                soilChart.data.labels.shift();
+                soilChart.data.datasets[0].data.shift();
+                soilChart.data.datasets[1].data.shift();
+            }
+            soilChart.update('none');
+        }
 
         // Recupera o IP salvo no navegador (localStorage)
         const savedIp = localStorage.getItem('agrosolo_esp_ip') || '';
@@ -667,7 +817,10 @@
             elTensao.textContent = dados.tensao !== undefined ? dados.tensao.toFixed(2) : ((dados.adc / 4095.0) * 3.3).toFixed(2);
             elTimestamp.textContent = agora;
 
-            // 4. Adicionar ao Histórico
+            // 4. Atualizar Gráfico de Curvas
+            atualizarGrafico(agora, hum, dados.temperatura);
+
+            // 5. Adicionar ao Histórico
             adicionarAoHistorico({
                 hora: agora,
                 temp: dados.temperatura <= -100 ? "N/D" : `${dados.temperatura.toFixed(1)} °C`,
