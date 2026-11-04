@@ -1,270 +1,133 @@
-
-#include <WiFi.h>
 #include <Arduino.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <WebServer.h>
 
-#define ONE_WIRE_BUS 5 // pino de dados do DS18B20
-#define SOIL_PIN 34    // pino analógico do sensor de umidade do solo
+/**
+ * =============================================================================
+ * PROJETO BETTIU 2P - AGROSOLO
+ * Monitoramento de Umidade do Solo e Temperatura com DS18B20 e ESP32
+ * =============================================================================
+ */
 
-#define SOIL_DRY 3000
-#define SOIL_WET 1200
+// --- MAPEAMENTO DE PINOS (GPIOs) ---
+// Pino de dados do sensor DS18B20 (com resistor pull-up de 4.7k entre VCC e DATA)
+#define PIN_DS18B20 4
 
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
-const char *ssid = "iPhone de japa";
-const char *password = "japoneskn";
-WebServer server(80);
+// Pino analógico do sensor de umidade do solo (ADC1: seguro para uso com Wi-Fi)
+#define PIN_SOIL_MOISTURE 34
 
-float temperaturaC = 0.0;
-int umidadePercentual = 0;
-int leituraBruta = 0;
+// --- CONFIGURAÇÕES DO SENSOR DS18B20 ---
+OneWire oneWire(PIN_DS18B20);
+DallasTemperature dallasSensors(&oneWire);
 
-unsigned long ultimoTempo = 0;
-const unsigned long intervalo = 2000;
+// --- CALIBRAÇÃO DO SENSOR DE UMIDADE DO SOLO ---
+// O ADC do ESP32 tem resolução de 12 bits (valores de 0 a 4095).
+// Geralmente:
+// - Sensor no ar (seco): valor analógico alto (ex: ~3200 a 4095)
+// - Sensor na água (100% úmido): valor analógico baixo (ex: ~1200 a 1600)
+// Ajuste estas constantes de acordo com os testes no seu solo/sensor:
+const int VALOR_SECO = 4095;    // Leitura no ar (0% de umidade)
+const int VALOR_MOLHADO = 1450; // Leitura na água/solo saturado (100% de umidade)
 
-void paginainicial()
+// Função para ler o sensor analógico com média móvel para reduzir ruído do ESP32
+int lerUmidadeSoloMedia(int pino, int amostras = 10)
 {
-  String html = R"rawliteral(
-    <!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monitoramento do Solo</title>
-    <style>
-        :root {
-            --primary-color: #2e7d32;
-            --bg-color: #f4f7f6;
-            --card-bg: #ffffff;
-            --box-bg: #e8f5e9;
-            --text-main: #1b5e20;
-            --text-muted: #4caf50;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-
-        .container {
-            background-color: var(--card-bg);
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(46, 125, 50, 0.1);
-            text-align: center;
-            width: 100%;
-            max-width: 450px;
-        }
-
-        h1 {
-            font-size: 24px;
-            margin-bottom: 30px;
-            color: var(--primary-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .dashboard {
-            display: flex;
-            gap: 20px;
-            justify-content: space-between;
-        }
-
-        .card {
-            background-color: var(--box-bg);
-            padding: 25px 20px;
-            border-radius: 12px;
-            flex: 1;
-            border: 1px solid #c8e6c9;
-            transition: transform 0.2s;
-        }
-
-        .card:hover {
-            transform: translateY(-5px);
-        }
-
-        .card-title {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-muted);
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .card-value {
-            font-size: 36px;
-            font-weight: bold;
-            display: flex;
-            align-items: baseline;
-            justify-content: center;
-            gap: 4px;
-        }
-
-        .unit {
-            font-size: 18px;
-            font-weight: normal;
-            color: var(--primary-color);
-        }
-    </style>
-</head>
-<body>
-
-    <div class="container">
-        <h1>🌱 Monitoramento do Solo</h1>
-
-        <div class="dashboard">
-            <div class="card">
-                <div class="card-title">🌡️ Temperatura</div>
-                <div class="card-value">
-                    <span id="temperatura">--</span>
-                    <span class="unit">°C</span>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">💧 Umidade</div>
-                <div class="card-value">
-                    <span id="umidade">--</span>
-                    <span class="unit">%</span>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-    function atualizarDados(){
-    fetch('dados')
-      .then(response => response.json())
-      .then(data => {
-        document.getElementById('temperatura').textContent = data.temperatura.toFixed(2);
-        document.getElementById('umidade').textContent = data.umidade;
-      })
-      .catch(error => {
-        console.error('Erro ao buscar dados:', error);
-      });
+    long soma = 0;
+    for (int i = 0; i < amostras; i++)
+    {
+        soma += analogRead(pino);
+        delay(10);
     }
-
-    atualizarDados();
-    
-    setInterval(atualizarDados, 1);
-    </script>
-
-</body>
-</html>
-    )rawliteral";
-
-  server.send(200, "text/html", html);
+    return (int)(soma / amostras);
 }
 
-void enviarDados()
+// Converte a leitura analógica bruta para porcentagem (0 a 100%)
+float calcularPorcentagemUmidade(int valorBruto)
 {
-  String json = "{";
-  json += "\"temperatura\":";
-  json += String(temperaturaC, 2);
-  json += ",";
+    // Mapeamento invertido: quanto maior a leitura ADC, mais seco o solo
+    float porcentagem = map(valorBruto, VALOR_SECO, VALOR_MOLHADO, 0, 100);
 
-  json += "\"umidade\":";
-  json += String(umidadePercentual);
-  json += "}";
+    // Garante que fique entre 0% e 100%
+    if (porcentagem < 0)
+        porcentagem = 0;
+    if (porcentagem > 100)
+        porcentagem = 100;
 
-  server.send(200, "applicating/json", json);
+    return porcentagem;
 }
 
 void setup()
 {
-  Serial.begin(115200);
-  delay(500);
+    // Inicialização da porta serial
+    Serial.begin(115200);
+    delay(1500); // Aguarda estabilizar a serial
 
-  WiFi.begin(ssid, password);
+    Serial.println("\n================================================");
+    Serial.println("         PROJETO AGROSOLO - INICIALIZANDO       ");
+    Serial.println("================================================");
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
-  Serial.println("Wi-Fi conectado!");
-  Serial.print("IP: ");
-  Serial.println(WiFi.localIP());
+    // Configura o pino do sensor de umidade
+    pinMode(PIN_SOIL_MOISTURE, INPUT);
 
-  // server routes
-  server.on("/", paginainicial);
-  server.on("/dados", enviarDados);
+    // Inicializa o barramento 1-Wire do DS18B20
+    dallasSensors.begin();
+    int totalDispositivos = dallasSensors.getDeviceCount();
+    Serial.printf("Sensores de temperatura encontrados: %d\n", totalDispositivos);
 
-  // iniciar servidor
-  server.begin();
+    if (totalDispositivos == 0)
+    {
+        Serial.println("[AVISO] Nenhum sensor DS18B20 detectado!");
+        Serial.println("        Verifique as ligacoes e o resistor de 4.7k entre 3V3 e GPIO 4.");
+    }
 
-  // inicia os sensores
-  sensors.begin();
-
-  Serial.println();
-  Serial.println("=== Monitor de temperatura e umidade do solo ===");
-
-  int qtdSensores = sensors.getDeviceCount();
-  Serial.print("Sensores DS18B20 encontrados: ");
-  Serial.println(qtdSensores);
-
-  if (qtdSensores == 0)
-  {
-    Serial.println("Aviso: nenhum DS18B20 detectado. Verifique a ligação e o resistor pull-up de 4.7kΩ.");
-  }
+    Serial.println("Leituras iniciadas...\n");
 }
 
 void loop()
 {
-  server.handleClient();
+    // --- 1. LEITURA DE TEMPERATURA (DS18B20) ---
+    dallasSensors.requestTemperatures();
+    float temperaturaC = dallasSensors.getTempCByIndex(0);
 
-  if (millis() - ultimoTempo >= intervalo)
-  {
-    ultimoTempo = millis();
+    // --- 2. LEITURA DE UMIDADE DO SOLO (ANALÓGICA) ---
+    int leituraBrutaADC = lerUmidadeSoloMedia(PIN_SOIL_MOISTURE);
+    float umidadePorcento = calcularPorcentagemUmidade(leituraBrutaADC);
+
+    // Converte a leitura bruta em tensão aproximada (0 a 3.3V)
+    float tensao = (leituraBrutaADC / 4095.0) * 3.3;
+
+    // --- 3. EXIBIÇÃO NO MONITOR SERIAL ---
+    Serial.println("------------------------------------------------");
 
     // Temperatura
-    sensors.requestTemperatures();
-    temperaturaC = sensors.getTempCByIndex(0);
+    if (temperaturaC == DEVICE_DISCONNECTED_C)
+    {
+        Serial.println("Temperatura : [ERRO] Sensor DS18B20 desconectado!");
+    }
+    else
+    {
+        Serial.printf("Temperatura : %.2f °C\n", temperaturaC);
+    }
 
     // Umidade
-    leituraBruta = analogRead(SOIL_PIN);
+    Serial.printf("Umidade Solo: %.1f %% (ADC Bruto: %d | Tensao: %.2fV)\n",
+                  umidadePorcento, leituraBrutaADC, tensao);
 
-    umidadePercentual = map(leituraBruta, SOIL_DRY, SOIL_WET, 0, 100);
-    umidadePercentual = constrain(umidadePercentual, 0, 100);
-  }
+    // Dica de calibração
+    Serial.print("Status Solo : ");
+    if (umidadePorcento < 30.0)
+    {
+        Serial.println("SECO (Necessita irrigacao)");
+    }
+    else if (umidadePorcento <= 70.0)
+    {
+        Serial.println("IDEAL / UMIDO");
+    }
+    else
+    {
+        Serial.println("SATURADO / MUITO ENCHARCADO");
+    }
 
-  // ---------- Exibição no terminal ----------
-  Serial.println("-----------------------------------------");
-
-  if (temperaturaC == DEVICE_DISCONNECTED_C)
-  {
-    Serial.println("Temperatura: erro na leitura (sensor desconectado)");
-  }
-  else
-  {
-    Serial.print("Temperatura: ");
-    Serial.print(temperaturaC, 2);
-    Serial.println(" C");
-  }
-
-  Serial.print("Umidade do solo: ");
-  Serial.print(umidadePercentual);
-  Serial.print(" %  (leitura bruta: ");
-  Serial.print(leituraBruta);
-  Serial.println(")");
-  Serial.print(WiFi.localIP());
-
-  delay(2000);
+    // Intervalo de 2 segundos entre as leituras
+    delay(2000);
 }
