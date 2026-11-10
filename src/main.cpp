@@ -75,8 +75,10 @@ String urlServidorWeb = "";
 // =============================================================================
 // FUNÇÕES DE STATUS NO DISPLAY OLED
 // =============================================================================
-void mostrarStatusOLED(const char* titulo, const char* linha1, const char* linha2 = "", const char* linha3 = "") {
-    if (!displayConectado) return;
+void mostrarStatusOLED(const char *titulo, const char *linha1, const char *linha2 = "", const char *linha3 = "")
+{
+    if (!displayConectado)
+        return;
 
     display.clearDisplay();
     display.drawRoundRect(0, 0, 128, 64, 4, SSD1306_WHITE);
@@ -93,11 +95,13 @@ void mostrarStatusOLED(const char* titulo, const char* linha1, const char* linha
     display.setCursor(6, 20);
     display.print(linha1);
 
-    if (strlen(linha2) > 0) {
+    if (strlen(linha2) > 0)
+    {
         display.setCursor(6, 32);
         display.print(linha2);
     }
-    if (strlen(linha3) > 0) {
+    if (strlen(linha3) > 0)
+    {
         display.setCursor(6, 44);
         display.print(linha3);
     }
@@ -108,8 +112,10 @@ void mostrarStatusOLED(const char* titulo, const char* linha1, const char* linha
 // =============================================================================
 // FUNÇÃO: EXIBIR O LINK DO DASHBOARD E TELEMETRIA NO DISPLAY OLED
 // =============================================================================
-void exibirPainelNoDisplay() {
-    if (!displayConectado) return;
+void exibirPainelNoDisplay()
+{
+    if (!displayConectado)
+        return;
 
     display.clearDisplay();
 
@@ -123,10 +129,14 @@ void exibirPainelNoDisplay() {
     // Indicador pulsante de atividade no canto superior direito
     static bool pulso = false;
     pulso = !pulso;
-    if (sensorConectado) {
-        if (pulso) {
+    if (sensorConectado)
+    {
+        if (pulso)
+        {
             display.fillCircle(122, 5, 2, SSD1306_BLACK);
-        } else {
+        }
+        else
+        {
             display.drawCircle(122, 5, 2, SSD1306_BLACK);
         }
     }
@@ -141,16 +151,20 @@ void exibirPainelNoDisplay() {
     display.drawRoundRect(2, 24, 124, 13, 2, SSD1306_WHITE);
     display.setCursor(6, 27);
     String linkUrl = "http://" + WiFi.localIP().toString();
-    if (linkUrl.length() * 6 > 118) {
+    if (linkUrl.length() * 6 > 118)
+    {
         display.print(WiFi.localIP().toString());
-    } else {
+    }
+    else
+    {
         display.print(linkUrl);
     }
 
     // 3. Linha divisória e Telemetria em tempo real
     display.drawFastHLine(2, 40, 124, SSD1306_WHITE);
 
-    if (sensorConectado) {
+    if (sensorConectado)
+    {
         // Linha 1 de Telemetria: Umidade e Temperatura
         display.setCursor(2, 44);
         display.printf("Umi: %.1f%%  Temp: %.1fC", umidadeSolo, temperaturaSolo);
@@ -158,7 +172,9 @@ void exibirPainelNoDisplay() {
         // Linha 2 de Telemetria: pH e Condutividade
         display.setCursor(2, 54);
         display.printf("pH: %.1f  EC: %d uS", phSolo, condutividadeSolo);
-    } else {
+    }
+    else
+    {
         display.setCursor(2, 44);
         display.print("Sensor RS-485:");
         display.setCursor(2, 54);
@@ -171,9 +187,12 @@ void exibirPainelNoDisplay() {
 // =============================================================================
 // FUNÇÃO: ENVIO DE ALERTAS VIA TELEGRAM
 // =============================================================================
-void enviarMensagemTelegram(String mensagem) {
-    if (String(TELEGRAM_BOT_TOKEN).indexOf("SEU_BOT_TOKEN") != -1) return;
-    if (WiFi.status() != WL_CONNECTED) return;
+void enviarMensagemTelegram(String mensagem)
+{
+    if (String(TELEGRAM_BOT_TOKEN).indexOf("SEU_BOT_TOKEN") != -1)
+        return;
+    if (WiFi.status() != WL_CONNECTED)
+        return;
 
     WiFiClientSecure client;
     client.setInsecure();
@@ -181,7 +200,8 @@ void enviarMensagemTelegram(String mensagem) {
     HTTPClient https;
     String endpoint = "https://api.telegram.org/bot" + String(TELEGRAM_BOT_TOKEN) + "/sendMessage";
 
-    if (https.begin(client, endpoint)) {
+    if (https.begin(client, endpoint))
+    {
         https.addHeader("Content-Type", "application/json");
 
         JsonDocument doc;
@@ -193,55 +213,72 @@ void enviarMensagemTelegram(String mensagem) {
         serializeJson(doc, jsonPayload);
 
         int httpResponseCode = https.POST(jsonPayload);
-        if (httpResponseCode > 0) {
+        if (httpResponseCode > 0)
+        {
             Serial.printf("[Telegram] Alerta enviado! (HTTP %d)\n", httpResponseCode);
-        } else {
+        }
+        else
+        {
             Serial.printf("[Telegram] Erro no envio: %s\n", https.errorToString(httpResponseCode).c_str());
         }
         https.end();
     }
 }
 
-void verificarAlertasTelegram() {
-    if (!sensorConectado) return;
+void verificarAlertasTelegram()
+{
+    if (!sensorConectado)
+        return;
 
     unsigned long agora = millis();
     String motivoAlerta = "";
     bool condicaoCritica = false;
 
-    if (umidadeSolo < 25.0) {
+    if (umidadeSolo < 25.0)
+    {
         condicaoCritica = true;
         motivoAlerta += "💧 *UMIDADE MUITO BAIXA (SOLO SECO):* " + String(umidadeSolo, 1) + "%\n" +
                         "⚠️ *Ação:* Irrigação urgente necessária.\n";
-    } else if (umidadeSolo > 85.0) {
+    }
+    else if (umidadeSolo > 85.0)
+    {
         condicaoCritica = true;
         motivoAlerta += "🌊 *UMIDADE EXCESSIVA (ENCHARCADO):* " + String(umidadeSolo, 1) + "%\n" +
                         "⚠️ *Ação:* Suspenda a irrigação.\n";
     }
 
-    if (temperaturaSolo > 36.0) {
+    if (temperaturaSolo > 36.0)
+    {
         condicaoCritica = true;
         motivoAlerta += "🔥 *TEMPERATURA ALTA DO SOLO:* " + String(temperaturaSolo, 1) + " °C\n";
-    } else if (temperaturaSolo < 10.0 && temperaturaSolo > -30.0) {
+    }
+    else if (temperaturaSolo < 10.0 && temperaturaSolo > -30.0)
+    {
         condicaoCritica = true;
         motivoAlerta += "❄️ *TEMPERATURA MUITO BAIXA:* " + String(temperaturaSolo, 1) + " °C\n";
     }
 
-    if (condutividadeSolo > 2000) {
+    if (condutividadeSolo > 2000)
+    {
         condicaoCritica = true;
         motivoAlerta += "⚡ *SALINIDADE ALTA (EC):* " + String(condutividadeSolo) + " uS/cm\n";
     }
 
-    if (phSolo < 5.0) {
+    if (phSolo < 5.0)
+    {
         condicaoCritica = true;
         motivoAlerta += "🧪 *SOLO MUITO ÁCIDO:* pH " + String(phSolo, 1) + "\n";
-    } else if (phSolo > 8.2) {
+    }
+    else if (phSolo > 8.2)
+    {
         condicaoCritica = true;
         motivoAlerta += "🧪 *SOLO MUITO ALCALINO:* pH " + String(phSolo, 1) + "\n";
     }
 
-    if (condicaoCritica) {
-        if (!alertaAtivo || (agora - ultimoAlertaEnviado >= COOLDOWN_ALERTA_MS)) {
+    if (condicaoCritica)
+    {
+        if (!alertaAtivo || (agora - ultimoAlertaEnviado >= COOLDOWN_ALERTA_MS))
+        {
             alertaAtivo = true;
             ultimoAlertaEnviado = agora;
 
@@ -257,8 +294,11 @@ void verificarAlertasTelegram() {
 
             enviarMensagemTelegram(msg);
         }
-    } else {
-        if (alertaAtivo) {
+    }
+    else
+    {
+        if (alertaAtivo)
+        {
             alertaAtivo = false;
             String msgNormalizado = String("✅ *[AGROSOLO - PARÂMETROS NORMALIZADOS]*\n\n") +
                                     "Os parâmetros do solo voltaram para a faixa aceitável!\n" +
@@ -275,8 +315,10 @@ void verificarAlertasTelegram() {
 // =============================================================================
 // FUNÇÃO: LEITURA DO SENSOR NPK 7 EM 1 VIA RS-485 MODBUS RTU (4800 BPS)
 // =============================================================================
-void lerSensorNPK() {
-    while (Serial2.available()) Serial2.read();
+void lerSensorNPK()
+{
+    while (Serial2.available())
+        Serial2.read();
 
     digitalWrite(PIN_DE_RE, HIGH);
     delayMicroseconds(250);
@@ -288,21 +330,24 @@ void lerSensorNPK() {
     unsigned long inicioEspera = millis();
     int bytesRecebidos = 0;
 
-    while (millis() - inicioEspera < 800 && bytesRecebidos < 19) {
-        if (Serial2.available()) {
+    while (millis() - inicioEspera < 800 && bytesRecebidos < 19)
+    {
+        if (Serial2.available())
+        {
             bufferModbus[bytesRecebidos++] = Serial2.read();
         }
     }
 
-    if (bytesRecebidos >= 19 && bufferModbus[0] == 0x01 && bufferModbus[1] == 0x03) {
-        umidadeSolo        = ((bufferModbus[3] << 8) | bufferModbus[4]) / 10.0;
-        int16_t rawTemp    = (bufferModbus[5] << 8) | bufferModbus[6];
-        temperaturaSolo    = rawTemp / 10.0;
-        condutividadeSolo  = (bufferModbus[7] << 8) | bufferModbus[8];
-        phSolo             = ((bufferModbus[9] << 8) | bufferModbus[10]) / 10.0;
-        nitrogenioSolo     = (bufferModbus[11] << 8) | bufferModbus[12];
-        fosforoSolo        = (bufferModbus[13] << 8) | bufferModbus[14];
-        potassioSolo       = (bufferModbus[15] << 8) | bufferModbus[16];
+    if (bytesRecebidos >= 19 && bufferModbus[0] == 0x01 && bufferModbus[1] == 0x03)
+    {
+        umidadeSolo = ((bufferModbus[3] << 8) | bufferModbus[4]) / 10.0;
+        int16_t rawTemp = (bufferModbus[5] << 8) | bufferModbus[6];
+        temperaturaSolo = rawTemp / 10.0;
+        condutividadeSolo = (bufferModbus[7] << 8) | bufferModbus[8];
+        phSolo = ((bufferModbus[9] << 8) | bufferModbus[10]) / 10.0;
+        nitrogenioSolo = (bufferModbus[11] << 8) | bufferModbus[12];
+        fosforoSolo = (bufferModbus[13] << 8) | bufferModbus[14];
+        potassioSolo = (bufferModbus[15] << 8) | bufferModbus[16];
 
         sensorConectado = true;
         leiturasSucesso++;
@@ -311,14 +356,17 @@ void lerSensorNPK() {
                       umidadeSolo, temperaturaSolo, condutividadeSolo, phSolo, nitrogenioSolo, fosforoSolo, potassioSolo);
 
         verificarAlertasTelegram();
-    } else {
+    }
+    else
+    {
         sensorConectado = false;
         leiturasFalha++;
         Serial.printf("[AVISO RS485] Falha na leitura do sensor (Bytes: %d/19)\n", bytesRecebidos);
     }
 
     // Se o Wi-Fi estiver conectado, atualiza o Painel com o Link HTTP e telemetria
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED)
+    {
         exibirPainelNoDisplay();
     }
 }
@@ -326,18 +374,21 @@ void lerSensorNPK() {
 // =============================================================================
 // ROTAS DO SERVIDOR WEB HTTP
 // =============================================================================
-void handleOptions() {
+void handleOptions()
+{
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
     server.send(204);
 }
 
-void handleRoot() {
+void handleRoot()
+{
     server.send_P(200, "text/html", DASHBOARD_HTML);
 }
 
-void handleApiData() {
+void handleApiData()
+{
     JsonDocument doc;
     doc["umidade"] = round(umidadeSolo * 10.0) / 10.0;
     doc["temperatura"] = round(temperaturaSolo * 10.0) / 10.0;
@@ -364,7 +415,8 @@ void handleApiData() {
 // =============================================================================
 // SETUP
 // =============================================================================
-void setup() {
+void setup()
+{
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
     Serial.begin(115200);
@@ -376,10 +428,14 @@ void setup() {
 
     // 1. Inicializa o Display OLED (I2C)
     Wire.begin(PIN_SDA, PIN_SCL);
-    if (display.begin(SSD1306_SWITCHCAPVCC, enderecoI2COled)) {
+    if (display.begin(SSD1306_SWITCHCAPVCC, enderecoI2COled))
+    {
         displayConectado = true;
-    } else {
-        if (display.begin(SSD1306_SWITCHCAPVCC, 0x3D)) {
+    }
+    else
+    {
+        if (display.begin(SSD1306_SWITCHCAPVCC, 0x3D))
+        {
             enderecoI2COled = 0x3D;
             displayConectado = true;
         }
@@ -405,17 +461,20 @@ void setup() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     int tentativas = 0;
-    while (WiFi.status() != WL_CONNECTED && tentativas < 30) {
+    while (WiFi.status() != WL_CONNECTED && tentativas < 30)
+    {
         delay(400);
         Serial.print(".");
         tentativas++;
         // Animação com pontinhos no display
         String pontos = "Conectando";
-        for (int p = 0; p < (tentativas % 4); p++) pontos += ".";
+        for (int p = 0; p < (tentativas % 4); p++)
+            pontos += ".";
         mostrarStatusOLED("AGROSOLO 2P", pontos.c_str(), WIFI_SSID, "Buscando IP...");
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED)
+    {
         urlServidorWeb = "http://" + WiFi.localIP().toString();
         Serial.println("\n[SUCESSO] Wi-Fi Conectado!");
         Serial.printf("[Wi-Fi] IP: %s\n", WiFi.localIP().toString().c_str());
@@ -428,7 +487,9 @@ void setup() {
         exibirPainelNoDisplay();
 
         enviarMensagemTelegram("🌱 *[AGROSOLO INICIADO]*\nPainel NPK ativo!\nIP: " + urlServidorWeb);
-    } else {
+    }
+    else
+    {
         Serial.println("\n[AVISO] Nao conectou ao Wi-Fi.");
         mostrarStatusOLED("AGROSOLO 2P", "Falha no Wi-Fi!", "Verifique a senha", "ou o roteador.");
     }
@@ -447,11 +508,13 @@ void setup() {
 // =============================================================================
 // LOOP PRINCIPAL
 // =============================================================================
-void loop() {
+void loop()
+{
     server.handleClient();
 
     unsigned long agora = millis();
-    if (agora - ultimoTempoLeitura >= INTERVALO_LEITURA_MS) {
+    if (agora - ultimoTempoLeitura >= INTERVALO_LEITURA_MS)
+    {
         ultimoTempoLeitura = agora;
         lerSensorNPK();
     }
