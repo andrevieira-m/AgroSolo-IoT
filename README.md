@@ -68,52 +68,29 @@ Os dados são adquiridos por protocolo industrial **Modbus RTU sobre barramento 
 
 ## 🏗️ Arquitetura da Solução
 
-O sistema foi concebido sob uma arquitetura em camadas, garantindo isolamento galvânico entre os circuitos de sensoriamento de campo, o processamento de borda e a camada de consumo cliente:
+O sistema foi concebido sob uma arquitetura em camadas, garantindo isolamento adequado entre os circuitos de sensoriamento de campo, a etapa de potência, o processamento de borda no ESP32 e as interfaces cliente (Display OLED, Dashboard Web e Bot Telegram):
 
-```mermaid
-flowchart TD
-    subgraph Campo [" CAMADA 1: SENSORES DE CAMPO "]
-        NPK["Sensor Industrial NPK 7 em 1<br>(Sonda Inox 316 / IP68)<br>Umid, Temp, EC, pH, N, P, K"]
-    end
-
-    subgraph Potencia [" CAMADA 2: GESTÃO ENERGÉTICA "]
-        FonteUSB["Fonte USB 5V 2A / VBUS"]
-        StepUp["Conversor DC-DC Boost (MT3608)<br>5V DC -> 12V DC Estabilizado"]
-    end
-
-    subgraph Condicionamento [" CAMADA 3: BARRAMENTO INDUSTRIAL "]
-        MAX485["Transceiver RS-485 TTL (MAX485)<br>Half-Duplex Diferencial (Linhas A e B)<br>UART2 @ 4800 bps"]
-    end
-
-    subgraph Borda [" CAMADA 4: PROCESSAMENTO DE BORDA (ESP32) "]
-        ESP32["Microcontrolador ESP32 DevKit V1<br>(Dual-Core 240MHz / FreeRTOS)<br>• Leitura e Decodificação Modbus RTU<br>• Servidor HTTP Embarcado (Porta 80)<br>• API REST JSON (/api/data)<br>• Gestor de Alertas com Cooldown"]
-        OLED["Display OLED 0.96 pol SSD1306 (I2C)<br>• Status de Rede e Conectividade<br>• Link HTTP direto para o Dashboard<br>• Telemetria Local Resumida"]
-    end
-
-    subgraph Rede [" CAMADA 5: TRANSPORTE E CONECTIVIDADE "]
-        WiFiRouter["Roteador Wi-Fi 2.4 GHz (802.11 b/g/n)"]
-    end
-
-    subgraph Clientes [" CAMADA 6: APLICAÇÃO E CLIENTES "]
-        Navegador["Dashboard Web SPA (Chart.js)<br>Mobile / Tablet / Desktop"]
-        Telegram["Telegram Bot API<br>Alertas de Solo Seco, pH, EC e Normalização"]
-    end
-
-    %% Conexões Elétricas e Físicas
-    FonteUSB -->|5V DC| ESP32
-    FonteUSB -->|5V DC| StepUp
-    StepUp -->|12V DC| NPK
-
-    %% Barramento de Comunicação
-    NPK <-->|Par Trançado RS-485 A/B| MAX485
-    MAX485 <-->|Sinais UART RX/TX + DE/RE| ESP32
-    ESP32 <-->|I2C SDA/SCL 400kHz| OLED
-
-    %% Conexão de Rede
-    ESP32 <-->|Wi-Fi 2.4 GHz| WiFiRouter
-    WiFiRouter <-->|HTTP / JSON (Porta 80)| Navegador
-    WiFiRouter -->|HTTPS / TLS (Porta 443)| Telegram
+```text
++--------------------+    RS-485     +-----------------+    UART2     +---------------------+     I2C      +------------------+
+|  Sensor NPK 7 em 1 | <===========> |  Módulo MAX485  | <==========> |   ESP32 DevKit V1   | ===========> |   Display OLED   |
+| (Sonda Inox IP68)  |  (Modbus RTU) | (TTL <-> RS485) | (RX19/TX18/  | (Servidor HTTP +    | (SDA21/SCL22)|  (Link Web +     |
++--------------------+               +-----------------+  DE/RE GPIO5)|  Processamento Edge)|              |   Telemetria)    |
+          ^                                                           +---------------------+              +------------------+
+          | 12V DC                                                       |       |         |
++--------------------+                                                   |       |         +---> [ Telegram Bot API (HTTPS) ]
+|  Step-Up (MT3608)  | <------------------ 5V USB -----------------------┘       |
++--------------------+                                                           v (Wi-Fi 2.4 GHz)
+                                                                       +--------------------+
+                                                                       | Cliente Web (SPA)  |
+                                                                       | (Dashboard / JSON) |
+                                                                       +--------------------+
 ```
+
+### Esquema de Conexões e Arquitetura Física do Hardware
+
+<p align="center">
+  <img src="img/esquema_eletrico_conexoes.jpg" alt="Diagrama de Arquitetura e Conexões Elétricas AgroSolo" width="75%">
+</p>
 
 ### Fluxo de Operação
 1. **Aquisição:** A cada 2 segundos, o ESP32 comuta o pino `PIN_DE_RE` (GPIO 5) para nível alto, transmitindo a requisição Modbus RTU ao sensor NPK via UART2 a 4800 bps.
