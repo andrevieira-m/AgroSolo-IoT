@@ -14,8 +14,8 @@
   <img src="https://img.shields.io/badge/Protocolo-Modbus%20RTU%20(RS--485)-orange.svg?style=flat-square" alt="Modbus RTU">
   <img src="https://img.shields.io/badge/Interface-OLED%20SSD1306%20I2C-green.svg?style=flat-square" alt="OLED">
   <img src="https://img.shields.io/badge/Framework-PlatformIO%20%2F%20Arduino-brightgreen.svg?style=flat-square&logo=platformio" alt="PlatformIO">
-  <img src="https://img.shields.io/badge/Frontend-HTML5%20%2F%20CSS3%20%2F%20-informational.svg?style=flat-square&logo=javascript" alt="Frontend">
-  <img src="https://img.shields.io/badge/Backend-C++%20%2F%20Chart.js-informational.svg?style=flat-square&logo=" alt="BackEnd">
+  <img src="https://img.shields.io/badge/Frontend-HTML5%20%2F%20CSS3%20%2F%20Chart.js-informational.svg?style=flat-square&logo=javascript" alt="Frontend">
+  <img src="https://img.shields.io/badge/Backend-C++%20%2F%20-informational.svg?style=flat-square&logo=" alt="BackEnd">
   <img src="https://img.shields.io/badge/Alertas-Telegram%20Bot%20API-blue.svg?style=flat-square&logo=telegram" alt="Telegram">
 </p>
 
