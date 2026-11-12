@@ -7,26 +7,24 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-
 #include "soc/soc.h"
 #include "soc/rtc_cntl_reg.h"
 #include "dashboard_html.h"
 
 /**
- * =============================================================================
  * PROJETO BETTIU 2P - AGROSOLO
- * SISTEMA COMPLETO: FONTE ÚNICA (STEP-UP) + SENSOR NPK 7x1 + QR CODE NO OLED
- * =============================================================================
+ * SISTEMA COMPLETO: FONTE ÚNICA (STEP-UP) + SENSOR NPK 7x1
  */
 
-// --- CONFIGURAÇÃO DA REDE WI-FI ---
+// --- CREDENCIAIS ---
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
 const char *WIFI_SSID = "SEU_WIFI_SSID";
 const char *WIFI_PASSWORD = "SUA_SENHA_WIFI";
-
-// --- CONFIGURAÇÃO DO BOT DO TELEGRAM ---
 const char *TELEGRAM_BOT_TOKEN = "SEU_BOT_TOKEN_AQUI";
 const char *TELEGRAM_CHAT_ID = "SEU_CHAT_ID_AQUI";
-
+#endif
 // --- MAPEAMENTO DE PINOS RS-485 (UART2) ---
 #define PIN_RX 19
 #define PIN_TX 18
@@ -72,9 +70,7 @@ bool alertaAtivo = false;
 WebServer server(80);
 String urlServidorWeb = "";
 
-// =============================================================================
 // FUNÇÕES DE STATUS NO DISPLAY OLED
-// =============================================================================
 void mostrarStatusOLED(const char *titulo, const char *linha1, const char *linha2 = "", const char *linha3 = "")
 {
     if (!displayConectado)
@@ -109,9 +105,7 @@ void mostrarStatusOLED(const char *titulo, const char *linha1, const char *linha
     display.display();
 }
 
-// =============================================================================
 // FUNÇÃO: EXIBIR O LINK DO DASHBOARD E TELEMETRIA NO DISPLAY OLED
-// =============================================================================
 void exibirPainelNoDisplay()
 {
     if (!displayConectado)
@@ -184,9 +178,7 @@ void exibirPainelNoDisplay()
     display.display();
 }
 
-// =============================================================================
 // FUNÇÃO: ENVIO DE ALERTAS VIA TELEGRAM
-// =============================================================================
 void enviarMensagemTelegram(String mensagem)
 {
     if (String(TELEGRAM_BOT_TOKEN).indexOf("SEU_BOT_TOKEN") != -1)
@@ -312,9 +304,7 @@ void verificarAlertasTelegram()
     }
 }
 
-// =============================================================================
 // FUNÇÃO: LEITURA DO SENSOR NPK 7 EM 1 VIA RS-485 MODBUS RTU (4800 BPS)
-// =============================================================================
 void lerSensorNPK()
 {
     while (Serial2.available())
@@ -371,9 +361,7 @@ void lerSensorNPK()
     }
 }
 
-// =============================================================================
 // ROTAS DO SERVIDOR WEB HTTP
-// =============================================================================
 void handleOptions()
 {
     server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -412,9 +400,7 @@ void handleApiData()
     server.send(200, "application/json", jsonResponse);
 }
 
-// =============================================================================
 // SETUP
-// =============================================================================
 void setup()
 {
     WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
@@ -505,9 +491,7 @@ void setup()
     lerSensorNPK();
 }
 
-// =============================================================================
 // LOOP PRINCIPAL
-// =============================================================================
 void loop()
 {
     server.handleClient();
